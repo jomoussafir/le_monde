@@ -1,0 +1,63 @@
+# HTTP Cookie File for lemonde.fr by Genuinous @genuinous.
+# To download cookies for this tab click here, or download all cookies.
+# Usage Examples:
+#   1) wget -x --load-cookies cookies.txt "https://www.lemonde.fr/archives/article/1946/01/01/le-budget-de-la-defense-nationale-devant-la-commission-des-finances_1875708_1819218.html"
+#   2) curl --cookie cookies.txt "https://www.lemonde.fr/archives/article/1946/01/01/le-budget-de-la-defense-nationale-devant-la-commission-des-finances_1875708_1819218.html"
+#   3) aria2c --load-cookies cookies.txt "https://www.lemonde.fr/archives/article/1946/01/01/le-budget-de-la-defense-nationale-devant-la-commission-des-finances_1875708_1819218.html"
+#
+www.lemonde.fr	FALSE	/international/article/2019/12/18	FALSE	1577312128	crfgL0cSt0r	true
+www.lemonde.fr	FALSE	/politique/article/2019/12/23	FALSE	1577701997	crfgL0cSt0r	true
+www.lemonde.fr	FALSE	/archives-du-monde/01-01-1946	FALSE	1577874346	crfgL0cSt0r	true
+www.lemonde.fr	FALSE	/archives-du-monde/01-01-2019	FALSE	1577874286	crfgL0cSt0r	true
+www.lemonde.fr	FALSE	/m-le-mag/article/2019/12/20	FALSE	1577572231	crfgL0cSt0r	true
+www.lemonde.fr	FALSE	/economie/article/2019/12/22	FALSE	1577701800	crfgL0cSt0r	true
+www.lemonde.fr	FALSE	/m-le-mag/article/2019/12/23	FALSE	1577707311	crfgL0cSt0r	true
+www.lemonde.fr	FALSE	/archives/article/1946/01/01	FALSE	1577874359	crfgL0cSt0r	true
+www.lemonde.fr	FALSE	/afrique/article/2019/12/22	FALSE	1577605694	crfgL0cSt0r	true
+www.lemonde.fr	FALSE	/pixels/article/2019/12/17	FALSE	1577572580	crfgL0cSt0r	true
+www.lemonde.fr	FALSE	/archives-du-monde	FALSE	1577874342	crfgL0cSt0r	true
+www.lemonde.fr	FALSE	/guides-d-achat	FALSE	1577832377	crfgL0cSt0r	true
+.lemonde.fr	TRUE	/	FALSE	1579470315	prog-deploy	79
+buf.lemonde.fr	FALSE	/	TRUE	1600208051	idrxvr	6A50273E-D0B0-497C-9496-CA983B344B68
+www.lemonde.fr	FALSE	/	FALSE	1600035253	_cb_ls	1
+www.lemonde.fr	FALSE	/	FALSE	1611397556	_cb	B8vHDxDNNWz7DAj-g-
+.lemonde.fr	TRUE	/	FALSE	1597443253	lead	73ef747f-f5d2-4535-8e09-36e7f9e0323f
+.lemonde.fr	TRUE	/	FALSE	1640341558	_ga	GA1.2.36651546.1565907254
+.lemonde.fr	TRUE	/	FALSE	1585045587	_fbp	fb.1.1565907254767.1028461639
+.lemonde.fr	TRUE	/	FALSE	1628979260	__gads	ID=ae3a4b03e3f1afeb:T=1565907260:S=ALNI_MZnQ6brFpPfMq9nKKGj1oQjSy6cyQ
+.lemonde.fr	TRUE	/	FALSE	1599811173	lmd_random_for_sampling	1566115173979
+.lemonde.fr	TRUE	/	FALSE	1600416196	lmd_a_s	wlJ9e70OMYkjs3Sm6C0so7VzIvPZ5cB2GfmXWmtEqvJuSu4VzHxdFy7olNpdkwi5
+.lemonde.fr	TRUE	/	FALSE	1600416196	lmd_a_m	PMvLJIg8WSLpf8VijBU7Sg%3D%3D
+.lemonde.fr	TRUE	/	FALSE	1600416196	lmd_a_sp	wlJ9e70OMYkjs3Sm6C0so7VzIvPZ5cB2GfmXWmtEqvJuSu4VzHxdFy7olNpdkwi5
+.lemonde.fr	TRUE	/	FALSE	1600416196	lmd_stay_connected	1
+.lemonde.fr	TRUE	/	TRUE	9343628998	OB-USER-TOKEN	d6cc89e2-821a-4ed2-a4e3-8831aff8d0b4
+.www.lemonde.fr	TRUE	/	FALSE	1600894771	beopid	16957085277267261695708527492996
+www.lemonde.fr	FALSE	/	FALSE	1600896411	user100Romans	f0d93fb5-6015-498e-8d90-6178709b3340
+www.lemonde.fr	FALSE	/	FALSE	1600462845	lemonde100romans	405387-#-Don Quichotte-#-Miguel de Cervantès|427818-#-Madame Bovary-#-Gustave Flaubert|427725-#-L'Éducation sentimentale-#-Gustave Flaubert|427517-#-Illusions perdues-#-Honoré de Balzac|427772-#-Les Frères Karamazov-#-Fiodor Dostoïevski
+.lemonde.fr	TRUE	/	TRUE	1605106810	lmd_a_ld	XHkFwZk1uZMATsA1i2J0Uh5PHt0nYr39Ym6hawmbb8Y%3D
+.lemonde.fr	TRUE	/	FALSE	1605463152	lmd_consent	%7B%22categories%22%3A%7B%22analytics%22%3Atrue%2C%22ads%22%3Atrue%2C%22socials%22%3Atrue%2C%22customization%22%3Atrue%7D%2C%22version%22%3A1%2C%22iabVersion%22%3A11%7D
+.lemonde.fr	TRUE	/	FALSE	1588581891	__utmz	194882738.1571175387.1.1.utmcsr=(direct)|utmccn=(direct)|utmcmd=(none)
+.lemonde.fr	TRUE	/	FALSE	1888173889	xtan43260	-
+.lemonde.fr	TRUE	/	FALSE	1888173889	xtant43260	1
+www.lemonde.fr	FALSE	/	FALSE	1577862052	crfgL0cSt0r	true
+.lemonde.fr	TRUE	/	FALSE	1606509891	__utma	194882738.36651546.1565907254.1571175387.1572813891.2
+www.lemonde.fr	FALSE	/	FALSE	1592994357	atidvisitor	%7B%22name%22%3A%22atidvisitor%22%2C%22val%22%3A%7B%22vrn%22%3A%22-43260--489989-%22%2C%22an%22%3A%2227816415%22%2C%22ac%22%3A%22PRE365J9990PRLVT1FPRIO%22%7D%2C%22options%22%3A%7B%22path%22%3A%22%2F%22%2C%22session%22%3A15724800%2C%22end%22%3A15724800%7D%7D
+.www.lemonde.fr	TRUE	/	FALSE	1607330847	lmd_cap	_witf15alr
+www.lemonde.fr	FALSE	/	TRUE	1579458817	critical-css-home-premium	1576855680
+www.lemonde.fr	FALSE	/	TRUE	1579458830	critical-css-article-premium	1576855678
+www.lemonde.fr	FALSE	/	TRUE	1579559427	critical-css-longform-premium	1576855676
+.lemonde.fr	TRUE	/	FALSE	1577355958	_gid	GA1.2.1043619410.1577227546
+.lemonde.fr	TRUE	/	FALSE	1577313946	EuConsent	BOsGdLmOsGdMFAOABBFRC0-AAAArJ7_______9______9uz_Ov_v_f__33e8__9v_l_7_-___u_-3zd4u_1vf99yfm1-7etr3tp_87ues2_Xur__79__3z3_9phP78k89r7337Ew-v-3o8Ly
+.boutique.lemonde.fr	TRUE	/	FALSE	11577228166	frontend	um1mqs92a33bo980vndj0h0gi0
+.lemonde.fr	TRUE	/	FALSE	1892588137	xtvrn	$43260$448833$
+.lemonde.fr	TRUE	/	FALSE	1578956137	xtor448833	at-394-%5B300600abos%5D
+.lemonde.fr	TRUE	/	FALSE	1578956137	xtdate448833	Tue%20Dec%2024%202019%2023%3A55%3A36%20GMT+0100%20%28heure%20normale%20d%u2019Europe%20centrale%29
+boutique.lemonde.fr	FALSE	/	FALSE	1608764138	cb_cookie_accept	cb_cookie_accept
+www.lemonde.fr	FALSE	/	FALSE	1577271356	_cb_svref	https%3A%2F%2Fwww.google.com%2F
+.lemonde.fr	TRUE	/	FALSE	1577271448	_sp_ses.fb3f	*
+.lemonde.fr	TRUE	/	FALSE	1577271341	kw.session_ts	1577269541869
+www.lemonde.fr	FALSE	/	FALSE	1608805556	cmp	j=1&t=1577269557
+.lemonde.fr	TRUE	/	FALSE	1608805556	amplitude_id_7dec6d6e90d5288af6e9a882f8def199lemonde.fr	eyJkZXZpY2VJZCI6ImZiM2Q3NmUzLTQ4OGYtNGU0Yy1hZGIyLTRhMzA1MGRiOWZkZFIiLCJ1c2VySWQiOiIyNzgxNjQxNSIsIm9wdE91dCI6ZmFsc2UsInNlc3Npb25JZCI6MTU3NzI2NzcwNDc4MywibGFzdEV2ZW50VGltZSI6MTU3NzI2OTU1NjkzNCwiZXZlbnRJZCI6OTUxLCJpZGVudGlmeUlkIjo4MjAsInNlcXVlbmNlTnVtYmVyIjoxNzcxfQ==
+www.lemonde.fr	FALSE	/	FALSE	1611397556	_chartbeat2	.1565907253057.1577269556951.1111111010111111.CsCwmOBh4ZUADVs0_oBULLJwyWSdM.5
+.lemonde.fr	TRUE	/	FALSE	1577355957	kw.pv_session	3
+.lemonde.fr	TRUE	/	FALSE	1610965648	_sp_id.fb3f	37fd820d-7ecd-46a7-afd2-07f01962be4d.1565907255.131.1577269649.1577257950.663e822a-88c8-4caa-946b-68b1d5404693
