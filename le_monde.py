@@ -16,8 +16,8 @@ def date_seq(start_date, end_date):
 	return(date_list)
 
 
-start_date = datetime.datetime(2019, 10, 5)
-end_date = datetime.datetime(2019, 10, 5)
+start_date = datetime.datetime(2019, 10, 1)
+end_date = datetime.datetime(2019, 11, 1)
 date_list = date_seq(start_date, end_date)
 
 toc_dir="toc"
@@ -53,7 +53,8 @@ if get_url:
 			if m:
 				for e in m:
 					if re.search("article\/"+d.strftime("%Y/%m/%d"),e):
-						url_fd.write(e+"\n")
+						if not re.search("<",e):
+							url_fd.write(e+"\n")
 
 		url_fd.close()
 
