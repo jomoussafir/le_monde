@@ -28,31 +28,48 @@ def date_seq(start_date, end_date):
     return(date_list)
 
 
-start_date = datetime.datetime(2019, 10, 1)
-end_date = datetime.datetime(2019, 11, 1)
+start_date = datetime.datetime(1945, 1, 1)
+end_date = datetime.datetime(2019, 12, 25)
 date_list = date_seq(start_date, end_date)
 
 toc_dir="toc"
 content_base_dir="content"
 
-## get raw html page for each day
-## and extract article urls
-get_url=True
-## get_url=False
-if get_url:
+raw_fname_min_size=50000
 
+## get raw html pages for each day
+## re-run a couple of times to have all files
+get_raw_url=True
+get_raw_url=False
+if get_raw_url:
+
+    ## make toc_dir if it does not exist
     if not os.path.isdir(toc_dir):
         os.mkdir(toc_dir)
 
+    ## get base raw_base_file_list
+    ## toc/raw_yyyy-mm-dd.html
+    raw_base_fname_list = glob.glob(toc_dir + "/raw_*.html")
+    for f in raw_base_fname_list:
+        m=re.search("raw_(\d{4})-(\d{2})-(\d{2})\.html",f)
+        if not m:
+            raw_base_fname_list.remove(f)
+
+    ## remove from date list if raw file size
+    ## above threshold
+    for f in raw_base_fname_list:
+        if(os.path.getsize(f)>raw_fname_min_size):
+            m=re.search("(\d{4})-(\d{2})-(\d{2})",f)
+            d=datetime.datetime(int(m.group(1)),int(m.group(2)),int(m.group(3)))
+            date_list.remove(d)
+            print(d)
+    
     get_url_thread_list=[]
     print("fetch url...",end="")
     for d in date_list:
         url=le_monde_base_url + d.strftime("%d-%m-%Y/")
         print("get "+ url)
         raw_fname = toc_dir + "/raw_" + d.strftime("%Y-%m-%d") + ".html"
-        #cmd = "curl -s --cookie cookies.txt " + url + " > " + raw_fname
-        #os.system(cmd)
-
         get_url_thread_list.append(GetUrlThread(url, raw_fname))
 
     for m in get_url_thread_list:
@@ -65,7 +82,39 @@ if get_url:
 
     print("done")
         
-        
+
+
+
+## get raw html pages whose link
+## is in raw_html pages
+
+get_raw_url_sub=True
+get_raw_url_sub=False
+if get_raw_url_sub:
+    raw_base_date_list=[]
+    
+    ## extract date_list from initial raw_fname
+    raw_base_fname_list = glob.glob(toc_dir + "/raw_(\d{4})-(\d{2})-(\d{2})\.html")
+    d=datetime.datetime(int(m.group(1)),int(m.group(2)),int(m.group(3)))
+    raw_base_date_list.append(d)
+    
+
+
+    sys.exit(0)
+
+    for raw_fname in raw_base_date_list:
+        raw_fd=open(raw_fname, "r")
+        raw_lines = raw_fd.readlines()
+        raw_fd.close()
+    
+
+
+
+    
+
+get_url=True
+get_url=False
+if get_url:
     for d in date_list:
         raw_fname = toc_dir + "/raw_" + d.strftime("%Y-%m-%d") + ".html"
         raw_fd=open(raw_fname, "r")
@@ -86,12 +135,14 @@ if get_url:
         url_fd.close()
 
 
+
+
 art_base_dir = "articles"
 ## for each url_yyyymmdd.html
 ## grep article url
 ## fetch article.html
 get_art=True
-## get_art=False
+get_art=False
 if get_art:
     for d in date_list:
         get_url_thread_list=[]
@@ -124,7 +175,7 @@ if get_art:
 
 ## extract text from each article page
 parse_art=True
-## parse_art=False
+parse_art=False
 if parse_art:
     txt_pattern="article__paragraph.*"
     txt_pattern="<p class=\"article__paragraph \">(.*?)<\/p>"
