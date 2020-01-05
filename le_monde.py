@@ -44,6 +44,8 @@ raw_dir="raw"
 url_dir="url"
 art_dir = "articles"
 
+
+
 raw_fname_min_size=50000
 
 
@@ -215,29 +217,31 @@ if get_art:
     get_art_thread_list=[]
     url_fname_list=list(set(glob.glob("url/url_*.html")))
     url_fname_list.sort()
-    for f in url_fname_list[:5]:
+    for f in url_fname_list[20000:]:
         print(f)
-
         m=re.search("(\d{4})-(\d{2})-(\d{2})",f)
         if m:
             url_fd=open(f,"r")
             lines=url_fd.readlines()
             url_fd.close()
 
+            
             d=datetime.datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)))
             d_str = d.strftime("%Y\/%m\/%d")
+
+            art_dir_sub = art_dir + "/" + d.strftime("%Y-%m-%d")
+            ## make art_dir_sub if it does not exist
+            if not os.path.isdir(art_dir_sub):
+                pathlib.Path(art_dir_sub).mkdir(parents=True, exist_ok=True)
             
             for l in lines:
                 l=l.rstrip()
                 m=re.search("www.lemonde.fr\/.*\/article/"+d_str+"/(.*?html)", l)
                 if m:
                     art_url=l
-                    art_fname=art_dir+"/"+m.group(1)
-                    #print(art_url)
-                    print(art_fname)
+                    art_fname=art_dir_sub+"/"+m.group(1)
                     get_art_thread_list.append(GetUrlThread(art_url, art_fname))
                     
-
     ## send requests
     nb_req_max=10
     for i in range(0, len(get_art_thread_list), nb_req_max):
@@ -247,8 +251,6 @@ if get_art:
         print("")
         for m in get_art_thread_list_sub:
             m.join()
-
-
 
 
             
@@ -261,8 +263,8 @@ if parse_art:
     txt_pattern="article__paragraph.*"
     txt_pattern="<p class=\"article__paragraph \">(.*?)<\/p>"
     for d in date_list:
-        art_tmp_dir=art_base_dir + "/" + d.strftime("%Y-%m-%d") + "_tmp"
-        art_dir=art_base_dir + "/" + d.strftime("%Y-%m-%d")
+        art_tmp_dir=art_base_dir + "/" + d.strftime("%Y-%m-%d") + "_tmp/"
+        art_dir=art_base_dir + "/" + d.strftime("%Y-%m-%d") + "/"
 
         ##print("parse "+art_tmp_dir)
 
