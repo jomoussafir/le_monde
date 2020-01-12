@@ -104,10 +104,15 @@ if get_art:
                     art_url=l
                     art_fname=art_dir_sub+"/"+m.group(1)
                     art_txt_fname=art_txt_dir_sub+"/"+m.group(1)
+                    
                     if not os.path.exists(art_txt_fname):
+                        #print(art_fname)
+                        #print(art_txt_fname)
+                        #print(art_txt_dir_sub)
+                        #print(m.group(1))
                         get_art_thread_list.append(GetUrlThread(art_url, art_fname))
                     
-    
+
     ## send requests
     nb_req_max=20
     txt_pattern="<p class=\"article__paragraph \">(.*?)<\/p>"
@@ -119,7 +124,7 @@ if get_art:
         print(datetime.datetime.now().strftime("%H:%M:%S"))
         
         for m in get_art_thread_list_sub:
-            print(m.fname)
+            print(m.url)
 
             
         for m in get_art_thread_list_sub:
@@ -130,7 +135,7 @@ if get_art:
 
 
 
-            
+        
         ## parse articles
         for m in get_art_thread_list_sub:
             art_fname = m.fname
@@ -139,16 +144,15 @@ if get_art:
                 lines = fd.readlines()
                 fd.close()
 
-                art_txt_fname = re.sub(art_dir,art_txt_dir, art_fname)
+                art_txt_fname = re.sub(art_dir+"/",art_txt_dir+"/", art_fname)
                 art_txt_fd = open(art_txt_fname, "w")
                 for l in lines:
                     m=re.findall(txt_pattern, l)
                     if m:
+                        print("match")
                         art_txt_fd.write("\n".join(m))
                 art_txt_fd.close()
 
                 os.remove(art_fname)
-
-        ## sys.exit(0)
 
 
