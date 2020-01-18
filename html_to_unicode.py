@@ -1,45 +1,45 @@
-import sys
+import os,sys
 import html
+import re
+import threading
+import datetime
+import pathlib
 import glob
 import requests
 from urllib import request
-
 from bs4 import BeautifulSoup
 
 
+art_txt_dir = "articles_txt"
+art_utf_8_dir = "articles_utf_8"
 
+if not os.path.isdir(art_utf_8_dir):
+    pathlib.Path(art_utf_8_dir).mkdir(parents=True, exist_ok=True)
 
+art_txt_fname_list=list(set(glob.glob("articles_txt/2019-*/*.html")))
 
+for fname in art_txt_fname_list:
 
-
-sys.exit(0)
-
-## Fetch and parse
-url_fd = open("url/url_2019-12-17.html")
-url_list=url_fd.readlines()
-url_fd.close()
-
-url=url_list
-
-
-test_fd=open("test.txt","w")
-
-for url in url_list:
-    print(url)
+    m=re.search("(\d{4})-(\d{2})-(\d{2})",fname)
+    if m:
+        out_dir=art_utf_8_dir+"/"+m.group(1) + "-" + m.group(2) + "-" + m.group(3) + "/"
+        if not os.path.exists(out_dir):
+            pathlib.Path(out_dir).mkdir(parents=True, exist_ok=True)
+        
     
-    ## page = requests.get(url)
-    page = request.urlopen(url).read().decode('utf8')
+    fd = open(fname, "r")
+    lines=fd.readlines()
+    fd.close()
 
+    page="<html><body><p>" + "</p>\n<p>".join(lines)+"</p></body></html>"
     soup = BeautifulSoup(page, 'html.parser')
-    title=soup.find_all('title')
-    paragraph=soup.find_all('p',  class_='article__paragraph')
 
-    title = soup.title.string
-    paragraph=soup.find_all('p',  class_='article__paragraph')
+    out_fname=re.sub(art_txt_dir+"/",art_utf_8_dir+"/", fname)
+    out_fd=open(out_fname, "w")
+    for p in soup.find_all('p'):
+        out_fd.write(p.get_text())
 
-    test_fd.write(title)
+    out_fd.close()
+    
 
-    for p in paragraph:
-        test_fd.write(p.get_text())
 
-test_fd.close()
