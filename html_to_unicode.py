@@ -16,7 +16,7 @@ art_utf_8_dir = "articles_utf_8"
 if not os.path.isdir(art_utf_8_dir):
     pathlib.Path(art_utf_8_dir).mkdir(parents=True, exist_ok=True)
 
-art_txt_fname_list=list(set(glob.glob("articles_txt/2019-12-04/*.html")))
+art_txt_fname_list=list(set(glob.glob("articles_txt/*/*.html")))
 
 for fname in art_txt_fname_list:
 
@@ -35,15 +35,16 @@ for fname in art_txt_fname_list:
     page="<html><body><p>" + "</p>\n<p>".join(lines)+"</p></body></html>"
     soup = BeautifulSoup(page, 'html.parser')
 
-    ## replace &nbsp
-    nonBreakSpace = u'\xa0'
-    soup = soup.replace(nonBreakSpace, ' ')
-
     out_fname=re.sub(art_txt_dir+"/",art_utf_8_dir+"/", fname)
     out_fd=open(out_fname, "w")
-    for p in soup.find_all('p'):
-        out_fd.write(p.get_text())
 
+    for p in soup.find_all('p'):
+        str=p.get_text()
+        str=re.sub("\xa0"," ", str)
+        out_fd.write(str)
+
+        ## print(str)
+        
     out_fd.close()
     
 
