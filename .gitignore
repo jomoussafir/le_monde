@@ -3,6 +3,7 @@
 /html/**
 /txt/**
 /codex/**
+/user_data/**
 
 # Keep directory placeholders if needed
 !/url/.gitkeep
