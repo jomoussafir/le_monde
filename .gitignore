@@ -1,0 +1,11 @@
+# Ignore generated pipeline outputs
+/url/**
+/html/**
+/txt/**
+/codex/**
+
+# Keep directory placeholders if needed
+!/url/.gitkeep
+!/html/.gitkeep
+!/txt/.gitkeep
+!/codex/.gitkeep
