@@ -5,6 +5,11 @@
 /codex/**
 /user_data/**
 
+# Ignore Python bytecode
+*.pyc
+__pycache__/
+.venv/
+
 # Keep directory placeholders if needed
 !/url/.gitkeep
 !/html/.gitkeep
