@@ -54,6 +54,10 @@ def log_error(msg, *args):
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
+DAY_BAR_WIDTH = 16
+ITEM_BAR_WIDTH = 18
+
+
 def parse_input_date(value):
     for fmt in ("%d-%m-%Y", "%Y%m%d", "%Y-%m-%d"):
         try:
@@ -73,7 +77,28 @@ def _bar(total, desc, position=1, unit=""):
         leave=False,
         unit=unit,
         dynamic_ncols=True,
-        bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} {unit} [{elapsed}]",
+        bar_format=(
+            "{desc:<16.16} {bar:"
+            f"{ITEM_BAR_WIDTH}"
+            "} {n_fmt}/{total_fmt} {unit} [{elapsed}]"
+            "{postfix}"
+        ),
+    )
+
+
+def _day_bar(days, desc):
+    return tqdm(
+        days,
+        desc=desc,
+        position=0,
+        unit="day",
+        dynamic_ncols=True,
+        bar_format=(
+            "{desc:<16.16} {bar:"
+            f"{DAY_BAR_WIDTH}"
+            "} {n_fmt}/{total_fmt} [{elapsed}]"
+            "{postfix}"
+        ),
     )
 
 
@@ -101,7 +126,7 @@ def step_urls(target_date, args):
         log_info("[url] %s already present, skipping", target_date)
         return url_file
 
-    with _bar(total=None, desc=f"[url] {target_date} scraping pages", unit="page") as bar:
+    with _bar(total=None, desc=f"url {target_date:%Y-%m-%d}", unit="page") as bar:
         original_urls = []
         page_index = 1
         max_page = 1
@@ -154,7 +179,7 @@ def step_html(target_date, url_file, args):
     urls = read_daily_urls(url_file)
     fetched = skipped = failed = 0
 
-    with _bar(total=len(urls), desc=f"[html] {target_date}", unit="art") as bar:
+    with _bar(total=len(urls), desc=f"html {target_date:%Y-%m-%d}", unit="art") as bar:
         with ThreadPoolExecutor(max_workers=args.workers) as pool:
             futures = {
                 pool.submit(_fetch_article, u, args.html_dir, args.force_html, args): u
@@ -171,7 +196,7 @@ def step_html(target_date, url_file, args):
                     log_error("[html] %s failed: %s", futures[fut], exc)
                     failed += 1
                 bar.update(1)
-                bar.set_postfix(fetched=fetched, skip=skipped, fail=failed)
+                bar.set_postfix_str(f"ok={fetched} skip={skipped} fail={failed}")
 
     log_info("[html] %s fetched=%d skipped=%d failed=%d", target_date, fetched, skipped, failed)
 
@@ -201,7 +226,7 @@ def step_txt(target_date, args):
     txt_base.mkdir(parents=True, exist_ok=True)
     written = skipped = 0
 
-    with _bar(total=len(html_files), desc=f"[txt]  {target_date}", unit="file") as bar:
+    with _bar(total=len(html_files), desc=f"txt {target_date:%Y-%m-%d}", unit="file") as bar:
         with ThreadPoolExecutor(max_workers=args.workers) as pool:
             futures = {
                 pool.submit(_convert_article, hf, txt_base / (hf.stem + ".txt"), args.force_txt): hf
@@ -216,7 +241,7 @@ def step_txt(target_date, args):
                 except Exception as exc:
                     log_error("[txt] %s failed: %s", futures[fut], exc)
                 bar.update(1)
-                bar.set_postfix(written=written, skip=skipped)
+                bar.set_postfix_str(f"ok={written} skip={skipped}")
 
     log_info("[txt] %s written=%d skipped=%d", target_date, written, skipped)
 
@@ -281,9 +306,9 @@ def main():
     def collect_url_files_for_days():
         tqdm.write("URL phase: extracting URL files")
         collected = {}
-        with tqdm(days, desc="urls", position=0, unit="day", dynamic_ncols=True) as day_bar:
+        with _day_bar(days, "urls") as day_bar:
             for target_date in day_bar:
-                day_bar.set_description(f"urls  [{target_date}]")
+                day_bar.set_description_str(f"urls {target_date:%m-%d}")
                 try:
                     collected[target_date] = step_urls(target_date, args)
                 except Exception as exc:
@@ -296,9 +321,9 @@ def main():
         collect_url_files_for_days()
     elif args.mode == "html":
         tqdm.write("HTML mode: using existing URL files (no URL extraction)")
-        with tqdm(days, desc="html", position=0, unit="day", dynamic_ncols=True) as day_bar:
+        with _day_bar(days, "html") as day_bar:
             for target_date in day_bar:
-                day_bar.set_description(f"html  [{target_date}]")
+                day_bar.set_description_str(f"html {target_date:%m-%d}")
                 url_file = Path(args.url_dir) / f"{target_date.strftime('%Y%m%d')}.txt"
                 try:
                     step_html(target_date, url_file, args)
@@ -307,9 +332,9 @@ def main():
                     tqdm.write(f"  ERROR [html] {target_date}: {exc}")
     elif args.mode == "txt":
         tqdm.write("TXT mode: converting existing HTML files (no URL/HTML fetch)")
-        with tqdm(days, desc="txt", position=0, unit="day", dynamic_ncols=True) as day_bar:
+        with _day_bar(days, "txt") as day_bar:
             for target_date in day_bar:
-                day_bar.set_description(f"txt  [{target_date}]")
+                day_bar.set_description_str(f"txt {target_date:%m-%d}")
                 try:
                     step_txt(target_date, args)
                 except Exception as exc:
@@ -320,9 +345,9 @@ def main():
         url_files = collect_url_files_for_days()
 
         tqdm.write("Phase 2/2: fetching HTML and converting TXT")
-        with tqdm(days, desc="content", position=0, unit="day", dynamic_ncols=True) as day_bar:
+        with _day_bar(days, "content") as day_bar:
             for target_date in day_bar:
-                day_bar.set_description(f"content  [{target_date}]")
+                day_bar.set_description_str(f"content {target_date:%m-%d}")
                 url_file = url_files.get(target_date)
                 if url_file is None:
                     tqdm.write(f"  [content] {target_date}: skipped (url phase failed)")
