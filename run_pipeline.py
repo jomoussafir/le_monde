@@ -1,38 +1,58 @@
 """
 Le Monde archive pipeline orchestrator.
 Runs for each day in the range:
-  1. [url]  Extract article URLs from archive pages → url/YYYYMMDD.txt
-  2. [html] Fetch HTML for each URL              → html/YYYY/MM/DD/<title>.html
-  3. [txt]  Convert HTML to plain text            → txt/YYYY/MM/DD/<title>.txt
+  1. [url]  Extract article URLs from archive pages → url/YYYY/YYYYMMDD.txt
+  2. [html] Fetch each article in headless Chrome, convert to TXT in-memory
+            → txt/YYYY/MM/DD/<title>.txt  (HTML is never saved to disk)
 
-HTTP fetching uses urllib by default, with automatic Playwright fallback when
-a client-challenge page is detected. Progress bars are displayed on the console.
+URL extraction uses urllib with automatic headless-Playwright fallback on
+challenge pages.  Article fetching always uses a headless Chrome/Chromium
+session via Playwright.  Progress bars are displayed on the console.
 """
 import argparse
+import asyncio
 import datetime as dt
 import logging
-import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from importlib import import_module
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 
-try:
-    from tqdm import tqdm
-except ModuleNotFoundError as exc:
-    raise RuntimeError("tqdm is required. Install it with: pip install tqdm") from exc
 
 from extract_archive_urls import (
     build_archive_url, date_range,
     extract_article_links, extract_max_page_hint,
 )
 from fetch_articles_html import read_daily_urls, output_path_for_url
-from fetch_test import fetch_url, is_client_challenge_html, fetch_url_with_playwright
-from html_to_txt import html_file_to_txt
+from html_to_txt import extract_best_html_segment, TextExtractor
+from fetch_test import (
+    DEFAULT_USER_AGENT,
+    fetch_url,
+    is_client_challenge_html,
+    fetch_url_with_playwright,
+)
 
 LOG_FILE = Path(__file__).with_name("pipeline.log")
 
-# Playwright is not thread-safe. Serialize all fallback calls across workers.
-_playwright_lock = threading.Lock()
+# Headers a real Chrome browser sends — required by Le Monde's archive backend.
+_BROWSER_HEADERS = {
+    "Accept": (
+        "text/html,application/xhtml+xml,application/xml;"
+        "q=0.9,image/avif,image/webp,image/apng,*/*;"
+        "q=0.8,application/signed-exchange;v=b3;q=0.7"
+    ),
+    "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Accept-Encoding": "gzip, deflate, br, zstd",
+    "Upgrade-Insecure-Requests": "1",
+}
+
+# Resource types to block in the browser (not needed for article text).
+BLOCKED_RESOURCE_TYPES = {"image", "stylesheet", "font", "media",
+                           "other", "eventsource", "websocket"}
+
+
+def _print(msg, *args):
+    """Timestamped print for pipeline progress."""
+    print(dt.datetime.now().strftime("%H:%M:%S"), msg % args if args else msg, flush=True)
 
 
 def setup_logging(verbose=False):
@@ -54,9 +74,6 @@ def log_error(msg, *args):
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
-DAY_BAR_WIDTH = 16
-ITEM_BAR_WIDTH = 18
-
 
 def parse_input_date(value):
     for fmt in ("%d-%m-%Y", "%Y%m%d", "%Y-%m-%d"):
@@ -69,88 +86,47 @@ def parse_input_date(value):
     )
 
 
-def _bar(total, desc, position=1, unit=""):
-    return tqdm(
-        total=total,
-        desc=desc,
-        position=position,
-        leave=False,
-        unit=unit,
-        dynamic_ncols=True,
-        bar_format=(
-            "{desc:<16.16} {bar:"
-            f"{ITEM_BAR_WIDTH}"
-            "} {n_fmt}/{total_fmt} {unit} [{elapsed}]"
-            "{postfix}"
-        ),
-    )
-
-
-def _day_bar(days, desc):
-    return tqdm(
-        days,
-        desc=desc,
-        position=0,
-        unit="day",
-        dynamic_ncols=True,
-        bar_format=(
-            "{desc:<16.16} {bar:"
-            f"{DAY_BAR_WIDTH}"
-            "} {n_fmt}/{total_fmt} [{elapsed}]"
-            "{postfix}"
-        ),
-    )
-
-
-def _fetch(url, args):
-    """urllib first; Playwright fallback on challenge page (lock-serialized)."""
-    html = fetch_url(url, cookie_file=args.cookie_file)
+def _fetch_archive(url, cookie_file):
+    """urllib first; headless Playwright fallback on challenge page."""
+    html = fetch_url(url, cookie_file=cookie_file)
     if is_client_challenge_html(html):
-        with _playwright_lock:
-            html = fetch_url_with_playwright(
-                url,
-                headless=not args.interactive_browser,
-                interactive_challenge=args.interactive_browser,
-            )
+        html = fetch_url_with_playwright(url, headless=True)
     return html
 
 
 # ── pipeline steps ────────────────────────────────────────────────────────────
 
 def step_urls(target_date, args):
-    url_dir = Path(args.url_dir)
+    url_dir = Path(args.url_dir) / target_date.strftime("%Y")
     url_dir.mkdir(parents=True, exist_ok=True)
     url_file = url_dir / f"{target_date.strftime('%Y%m%d')}.txt"
 
-    if url_file.exists() and url_file.stat().st_size > 0 and not args.force_urls:
+    if url_file.exists() and url_file.stat().st_size > 0:
         log_info("[url] %s already present, skipping", target_date)
         return url_file
 
-    with _bar(total=None, desc=f"url {target_date:%Y-%m-%d}", unit="page") as bar:
-        original_urls = []
-        page_index = 1
-        max_page = 1
+    _print("[url] %s extracting URLs", target_date)
+    original_urls = []
+    page_index = 1
+    max_page = 1
 
-        while page_index <= max_page:
-            page_url = build_archive_url(target_date, page_index)
-            try:
-                html = _fetch(page_url, args)
-            except (HTTPError, URLError, RuntimeError) as exc:
-                if page_index == 1:
-                    raise
-                log_error("[url] %s page %d failed: %s", target_date, page_index, exc)
-                break
+    while page_index <= max_page:
+        page_url = build_archive_url(target_date, page_index)
+        try:
+            html = _fetch_archive(page_url, args.cookie_file)
+        except (HTTPError, URLError, RuntimeError) as exc:
+            if page_index == 1:
+                raise
+            log_error("[url] %s page %d failed: %s", target_date, page_index, exc)
+            break
 
-            original_urls.extend(extract_article_links(html, page_url, target_date))
+        original_urls.extend(extract_article_links(html, page_url, target_date))
 
-            hint = extract_max_page_hint(html, target_date)
-            if hint > max_page:
-                max_page = hint
-                bar.total = max_page
-                bar.refresh()
+        hint = extract_max_page_hint(html, target_date)
+        if hint > max_page:
+            max_page = hint
 
-            bar.update(1)
-            page_index += 1
+        page_index += 1
 
     urls = sorted(set(original_urls))
     url_file.write_text("\n".join(urls) + ("\n" if urls else ""), encoding="utf-8")
@@ -158,92 +134,115 @@ def step_urls(target_date, args):
     return url_file
 
 
-def _fetch_article(article_url, html_dir, force, args):
-    """Worker: fetch one article HTML. Returns fetched / skip_exists / skip_unmatched."""
-    out = output_path_for_url(html_dir, article_url)
-    if out is None:
-        return "skip_unmatched"
-    if out.exists() and not force:
-        return "skip_exists"
-    out.parent.mkdir(parents=True, exist_ok=True)
-    html = _fetch(article_url, args)
-    out.write_text(html, encoding="utf-8")
-    return "fetched"
+def _html_to_txt_string(html):
+    """Convert an HTML string to plain text in-memory."""
+    segment = extract_best_html_segment(html)
+    parser = TextExtractor()
+    parser.feed(segment)
+    parser.close()
+    return parser.get_text()
+
+
+async def _fetch_articles_async(target_date, pending, user_data_dir, workers, delay):
+    """Fetch *pending* articles in parallel using `workers` concurrent browser pages.
+
+    pending: list of (article_url, txt_out_path) already filtered for existence.
+    Returns (fetched, failed) counts.
+    """
+    try:
+        async_playwright = import_module("playwright.async_api").async_playwright
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "Playwright is required. Install with: "
+            "pip install playwright && playwright install chromium"
+        ) from exc
+
+    fetched = failed = 0
+    sem = asyncio.Semaphore(workers)
+
+    async def handle_route(route):
+        if route.request.resource_type in BLOCKED_RESOURCE_TYPES:
+            await route.abort()
+        else:
+            await route.continue_()
+
+    async def fetch_one(article_url, txt_out):
+        nonlocal fetched, failed
+        async with sem:
+            if delay > 0:
+                await asyncio.sleep(delay)
+            page = await context.new_page()
+            try:
+                response = await page.goto(
+                    article_url, wait_until="domcontentloaded", timeout=90_000
+                )
+                if response is not None and not response.ok:
+                    raise RuntimeError(f"HTTP {response.status}")
+
+                html = await page.content()
+                if is_client_challenge_html(html):
+                    raise RuntimeError("Client challenge page returned")
+
+                txt_out.parent.mkdir(parents=True, exist_ok=True)
+                txt_out.write_text(_html_to_txt_string(html), encoding="utf-8")
+                fetched += 1
+            except Exception as exc:
+                log_error("[html] %s failed: %s", article_url, exc)
+                failed += 1
+            finally:
+                await page.close()
+
+    async with async_playwright() as pw:
+        context = await pw.chromium.launch_persistent_context(
+            str(user_data_dir),
+            headless=True,
+            channel="chrome",
+            user_agent=DEFAULT_USER_AGENT,
+            extra_http_headers=_BROWSER_HEADERS,
+        )
+        await context.route("**/*", handle_route)
+        try:
+            await asyncio.gather(*[fetch_one(url, txt) for url, txt in pending])
+        finally:
+            await context.close()
+
+    return fetched, failed
 
 
 def step_html(target_date, url_file, args):
+    """Fetch article URLs in headless Chrome (parallel pages), convert to TXT, save TXT only."""
     if not url_file.exists() or url_file.stat().st_size == 0:
-        tqdm.write(f"  [html] {target_date}: no URL file, skipping")
+        _print("[html] %s no URL file, skipping", target_date)
         return
 
     urls = read_daily_urls(url_file)
-    fetched = skipped = failed = 0
+    user_data_dir = Path(__file__).with_name("user_data")
 
-    with _bar(total=len(urls), desc=f"html {target_date:%Y-%m-%d}", unit="art") as bar:
-        with ThreadPoolExecutor(max_workers=args.workers) as pool:
-            futures = {
-                pool.submit(_fetch_article, u, args.html_dir, args.force_html, args): u
-                for u in urls
-            }
-            for fut in as_completed(futures):
-                try:
-                    result = fut.result()
-                    if result == "fetched":
-                        fetched += 1
-                    else:
-                        skipped += 1
-                except Exception as exc:
-                    log_error("[html] %s failed: %s", futures[fut], exc)
-                    failed += 1
-                bar.update(1)
-                bar.set_postfix_str(f"ok={fetched} skip={skipped} fail={failed}")
+    # Pre-filter: skip URLs with no parseable path or an existing TXT file.
+    pending = []
+    skipped = 0
+    for article_url in urls:
+        html_path = output_path_for_url(args.txt_dir, article_url)
+        if html_path is None:
+            skipped += 1
+            continue
+        txt_out = html_path.with_suffix(".txt")
+        if txt_out.exists():
+            skipped += 1
+            continue
+        pending.append((article_url, txt_out))
 
-    log_info("[html] %s fetched=%d skipped=%d failed=%d", target_date, fetched, skipped, failed)
+    _print("[html] %s  total=%d  pending=%d  already_done=%d  workers=%d",
+           target_date, len(urls), len(pending), skipped, args.workers)
 
-
-def _convert_article(html_file, txt_file, force):
-    """Worker: convert one HTML file to TXT."""
-    return html_file_to_txt(html_file, txt_file, force=force)
-
-
-def step_txt(target_date, args):
-    html_day = (
-        Path(args.html_dir)
-        / target_date.strftime("%Y")
-        / target_date.strftime("%m")
-        / target_date.strftime("%d")
-    )
-    if not html_day.exists():
+    if not pending:
         return
 
-    html_files = sorted(html_day.glob("*.html"))
-    txt_base = (
-        Path(args.txt_dir)
-        / target_date.strftime("%Y")
-        / target_date.strftime("%m")
-        / target_date.strftime("%d")
+    fetched, failed = asyncio.run(
+        _fetch_articles_async(target_date, pending, user_data_dir, args.workers, args.delay)
     )
-    txt_base.mkdir(parents=True, exist_ok=True)
-    written = skipped = 0
-
-    with _bar(total=len(html_files), desc=f"txt {target_date:%Y-%m-%d}", unit="file") as bar:
-        with ThreadPoolExecutor(max_workers=args.workers) as pool:
-            futures = {
-                pool.submit(_convert_article, hf, txt_base / (hf.stem + ".txt"), args.force_txt): hf
-                for hf in html_files
-            }
-            for fut in as_completed(futures):
-                try:
-                    if fut.result() == "written":
-                        written += 1
-                    else:
-                        skipped += 1
-                except Exception as exc:
-                    log_error("[txt] %s failed: %s", futures[fut], exc)
-                bar.update(1)
-                bar.set_postfix_str(f"ok={written} skip={skipped}")
-
-    log_info("[txt] %s written=%d skipped=%d", target_date, written, skipped)
+    log_info("[html] %s fetched=%d skipped=%d failed=%d",
+             target_date, fetched, skipped, failed)
 
 
 # ── main ─────────────────────────────────────────────────────────────────────
@@ -253,41 +252,45 @@ def main():
     yesterday = today - dt.timedelta(days=1)
 
     parser = argparse.ArgumentParser(
-        description="Full Le Monde pipeline: URLs → HTML → TXT"
+        description="Le Monde pipeline: URLs → TXT via headless Chrome (HTML never saved)"
     )
-    parser.add_argument("start_date", nargs="?", type=parse_input_date,
-                        default=str(yesterday),
-                        help="Start date (default: yesterday). DD-MM-YYYY / YYYYMMDD / YYYY-MM-DD")
-    parser.add_argument("end_date",   nargs="?", type=parse_input_date,
-                        default=None,
-                        help="Inclusive end date (default: same as start_date)")
+    parser.add_argument(
+        "start_date", nargs="?", type=parse_input_date,
+        default=str(yesterday),
+        help="Start date (default: yesterday). DD-MM-YYYY / YYYYMMDD / YYYY-MM-DD",
+    )
+    parser.add_argument(
+        "end_date", nargs="?", type=parse_input_date,
+        default=None,
+        help="Inclusive end date (default: same as start_date)",
+    )
 
-    parser.add_argument("--url-dir",  default="url")
-    parser.add_argument("--html-dir", default="html")
-    parser.add_argument("--txt-dir",  default="txt")
-
-    parser.add_argument("--interactive-browser", action="store_true",
-                        help="Show browser window when Playwright fallback is triggered")
-    parser.add_argument("--cookie-file", default=None)
-    parser.add_argument("--workers", type=int, default=8,
-                        help="Parallel workers for HTML fetch and TXT conversion (default: 8)")
+    _archive = Path("/Users/msfr/le_monde_archive")
+    parser.add_argument("--url-dir", default=str(_archive / "url"),
+                        help="Directory containing daily URL files (default: le_monde_archive/url)")
+    parser.add_argument("--txt-dir", default=str(_archive / "txt"),
+                        help="Output directory for TXT files (default: le_monde_archive/txt)")
+    parser.add_argument("--cookie-file", default=None,
+                        help="Optional Netscape cookie file for URL extraction requests")
     parser.add_argument(
         "--mode",
-        choices=("all", "urls", "html", "txt"),
+        choices=("all", "urls", "html"),
         default="all",
-        help="Run only one phase: urls, html, txt, or full pipeline (default: all)",
+        help=(
+            "Phase to run: "
+            "urls (extract URL files only), "
+            "html (fetch articles and save TXT, requires URL files), "
+            "all (both phases, default)"
+        ),
     )
-
-    parser.add_argument("--force-urls", action="store_true", help="Re-extract URLs even if file exists")
-    parser.add_argument("--force-html", action="store_true", help="Re-download HTML even if file exists")
-    parser.add_argument("--force-txt",  action="store_true", help="Regenerate txt even if file exists")
-    parser.add_argument("--force",      action="store_true", help="Force all three steps")
-
-    parser.add_argument("--verbose", action="store_true")
+    parser.add_argument("--verbose", action="store_true",
+                        help="Enable verbose logging to pipeline.log")
+    parser.add_argument("--workers", type=int, default=8,
+                        help="Parallel browser pages for article fetching (default: 8)")
+    parser.add_argument("--delay", type=float, default=0.0,
+                        help="Seconds to wait between page requests per worker (default: 0). "
+                             "Increase to 1–2 if getting 406/429 errors.")
     args = parser.parse_args()
-
-    if args.force:
-        args.force_urls = args.force_html = args.force_txt = True
 
     setup_logging(args.verbose)
 
@@ -297,69 +300,55 @@ def main():
 
     days = list(date_range(args.start_date, end_date))
 
-    tqdm.write(
-        f"Pipeline: {args.start_date} → {end_date}  ({len(days)} day(s))  "
-        f"workers={args.workers}  mode={args.mode}"
-    )
-    tqdm.write(f"Log: {LOG_FILE}")
+    _print("Pipeline: %s → %s  (%d day(s))  mode=%s", args.start_date, end_date, len(days), args.mode)
+    _print("Log: %s", LOG_FILE)
 
     def collect_url_files_for_days():
-        tqdm.write("URL phase: extracting URL files")
+        _print("URL phase: extracting URL files")
         collected = {}
-        with _day_bar(days, "urls") as day_bar:
-            for target_date in day_bar:
-                day_bar.set_description_str(f"urls {target_date:%m-%d}")
-                try:
-                    collected[target_date] = step_urls(target_date, args)
-                except Exception as exc:
-                    collected[target_date] = None
-                    log_error("URL phase failed on %s: %s", target_date, exc)
-                    tqdm.write(f"  ERROR [url] {target_date}: {exc}")
+        for target_date in days:
+            try:
+                collected[target_date] = step_urls(target_date, args)
+            except Exception as exc:
+                collected[target_date] = None
+                log_error("URL phase failed on %s: %s", target_date, exc)
+                _print("  ERROR [url] %s: %s", target_date, exc)
         return collected
 
     if args.mode == "urls":
         collect_url_files_for_days()
+
     elif args.mode == "html":
-        tqdm.write("HTML mode: using existing URL files (no URL extraction)")
-        with _day_bar(days, "html") as day_bar:
-            for target_date in day_bar:
-                day_bar.set_description_str(f"html {target_date:%m-%d}")
-                url_file = Path(args.url_dir) / f"{target_date.strftime('%Y%m%d')}.txt"
-                try:
-                    step_html(target_date, url_file, args)
-                except Exception as exc:
-                    log_error("HTML mode failed on %s: %s", target_date, exc)
-                    tqdm.write(f"  ERROR [html] {target_date}: {exc}")
-    elif args.mode == "txt":
-        tqdm.write("TXT mode: converting existing HTML files (no URL/HTML fetch)")
-        with _day_bar(days, "txt") as day_bar:
-            for target_date in day_bar:
-                day_bar.set_description_str(f"txt {target_date:%m-%d}")
-                try:
-                    step_txt(target_date, args)
-                except Exception as exc:
-                    log_error("TXT mode failed on %s: %s", target_date, exc)
-                    tqdm.write(f"  ERROR [txt] {target_date}: {exc}")
-    else:
-        tqdm.write("Phase 1/2: extracting URL files for all dates")
+        _print("HTML phase: fetching articles and converting to TXT (URL files must exist)")
+        for target_date in days:
+            url_file = (
+                Path(args.url_dir)
+                / target_date.strftime("%Y")
+                / f"{target_date.strftime('%Y%m%d')}.txt"
+            )
+            try:
+                step_html(target_date, url_file, args)
+            except Exception as exc:
+                log_error("HTML phase failed on %s: %s", target_date, exc)
+                _print("  ERROR [html] %s: %s", target_date, exc)
+
+    else:  # all
+        _print("Phase 1/2: extracting URL files for all dates")
         url_files = collect_url_files_for_days()
 
-        tqdm.write("Phase 2/2: fetching HTML and converting TXT")
-        with _day_bar(days, "content") as day_bar:
-            for target_date in day_bar:
-                day_bar.set_description_str(f"content {target_date:%m-%d}")
-                url_file = url_files.get(target_date)
-                if url_file is None:
-                    tqdm.write(f"  [content] {target_date}: skipped (url phase failed)")
-                    continue
-                try:
-                    step_html(target_date, url_file, args)
-                    step_txt(target_date, args)
-                except Exception as exc:
-                    log_error("Content phase failed on %s: %s", target_date, exc)
-                    tqdm.write(f"  ERROR [content] {target_date}: {exc}")
+        _print("Phase 2/2: fetching articles and converting to TXT")
+        for target_date in days:
+            url_file = url_files.get(target_date)
+            if url_file is None:
+                _print("  [content] %s: skipped (url phase failed)", target_date)
+                continue
+            try:
+                step_html(target_date, url_file, args)
+            except Exception as exc:
+                log_error("Content phase failed on %s: %s", target_date, exc)
+                _print("  ERROR [content] %s: %s", target_date, exc)
 
-    tqdm.write("Pipeline complete.")
+    _print("Pipeline complete.")
 
 
 if __name__ == "__main__":

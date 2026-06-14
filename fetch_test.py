@@ -1,9 +1,11 @@
 import argparse
+import os
+import ssl
 from http.cookiejar import MozillaCookieJar
 from importlib import import_module
 from pathlib import Path
 from urllib.error import HTTPError, URLError
-from urllib.request import HTTPCookieProcessor, Request, build_opener
+from urllib.request import HTTPSHandler, HTTPCookieProcessor, Request, build_opener
 
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -17,8 +19,26 @@ def is_client_challenge_html(html):
     return "<title>client challenge</title>" in lower or "_fs-ch-" in lower
 
 
-def build_http_opener(cookie_file=None):
+def _create_verified_ssl_context():
+    """Create an HTTPS context, preferring certifi CA bundle when available."""
+    try:
+        certifi = import_module("certifi")
+    except ModuleNotFoundError:
+        return ssl.create_default_context()
+    return ssl.create_default_context(cafile=certifi.where())
+
+
+def _is_cert_verification_error(exc):
+    reason = getattr(exc, "reason", None)
+    if isinstance(reason, ssl.SSLCertVerificationError):
+        return True
+    return "CERTIFICATE_VERIFY_FAILED" in str(exc)
+
+
+def build_http_opener(cookie_file=None, ssl_context=None):
     handlers = []
+    if ssl_context is not None:
+        handlers.append(HTTPSHandler(context=ssl_context))
     if cookie_file:
         jar = MozillaCookieJar(str(cookie_file))
         if Path(cookie_file).exists():
@@ -28,10 +48,24 @@ def build_http_opener(cookie_file=None):
 
 
 def fetch_url(url, cookie_file=None, timeout=30):
-    opener = build_http_opener(cookie_file=cookie_file)
-    req = Request(url, headers={"User-Agent": DEFAULT_USER_AGENT})
-    with opener.open(req, timeout=timeout) as response:
-        return response.read().decode("utf-8", errors="replace")
+    insecure_ssl = os.getenv("LE_MONDE_INSECURE_SSL", "0") == "1"
+    ssl_context = ssl._create_unverified_context() if insecure_ssl else _create_verified_ssl_context()
+    opener = build_http_opener(cookie_file=cookie_file, ssl_context=ssl_context)
+    req = Request(url, headers={
+        "User-Agent": DEFAULT_USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+        "Accept-Language": "fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7",
+    })
+    try:
+        with opener.open(req, timeout=timeout) as response:
+            return response.read().decode("utf-8", errors="replace")
+    except URLError as exc:
+        if _is_cert_verification_error(exc) and not insecure_ssl:
+            raise RuntimeError(
+                "SSL certificate verification failed. Install a CA bundle (e.g. `pip install certifi`) "
+                "or temporarily retry with LE_MONDE_INSECURE_SSL=1."
+            ) from exc
+        raise
 
 
 def fetch_url_with_playwright(url, headless=False, interactive_challenge=False):
@@ -158,7 +192,7 @@ def main():
 
     try:
         content = fetch_url(args.url, cookie_file=args.cookie_file)
-    except (HTTPError, URLError) as exc:
+    except (HTTPError, URLError, RuntimeError) as exc:
         raise RuntimeError(f"Failed to fetch {args.url}: {exc}") from exc
 
     output_path.write_text(content, encoding="utf-8")
